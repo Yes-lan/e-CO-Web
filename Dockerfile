@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	file \
 	git \
 	&& rm -rf /var/lib/apt/lists/*
-
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash 
 RUN set -eux; \
 	install-php-extensions \
 		@composer \
