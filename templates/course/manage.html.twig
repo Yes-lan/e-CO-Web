@@ -41,6 +41,17 @@
     <div class="modal-content modal-large">
         <span class="close" onclick="closeQRModal()">&times;</span>
         <h2>🔲 QR Codes du Parcours</h2>
+        
+        <!-- Important information about QR code stability -->
+        <div style="background: #e7f3ff; border-left: 4px solid #2196F3; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;">
+            <p style="margin: 0; color: #0c5460; font-weight: 600;">
+                ℹ️ <strong>Important :</strong> Ces QR codes sont <strong>permanents et ne changent jamais</strong> pour ce parcours.
+            </p>
+            <p style="margin: 0.5rem 0 0 0; color: #0c5460; font-size: 0.9rem;">
+                Vous pouvez les imprimer et les placer sur le terrain en toute sécurité. Ils resteront valides même si vous consultez cette page plusieurs fois.
+            </p>
+        </div>
+        
         <div style="text-align: right; margin-bottom: 1rem;">
             <button class="btn btn-primary" onclick="downloadAllQRCodes()">📥 Télécharger tout (PDF)</button>
         </div>
@@ -248,8 +259,42 @@
         }
 
         function addWaypoint() {
-            // Implementation for adding waypoint
-            alert('Fonctionnalité à implémenter: Ajouter une balise');
+            const course = window.currentEditingCourse;
+            
+            // Generate unique ID for new waypoint (find highest ID + 1)
+            let maxId = 0;
+            if (course.waypoints && course.waypoints.length > 0) {
+                maxId = Math.max(...course.waypoints.map(wp => wp.id || 0));
+            }
+            const newId = maxId + 1;
+            
+            // Create new waypoint with unique ID
+            const newWaypoint = {
+                id: newId,  // PERMANENT unique ID - never changes!
+                name: `Nouvelle balise ${newId}`,
+                description: '',
+                lat: null,
+                lng: null,
+                type: 'control'
+            };
+            
+            // Add to waypoints array
+            if (!course.waypoints) {
+                course.waypoints = [];
+            }
+            course.waypoints.push(newWaypoint);
+            
+            // Refresh the waypoints list
+            document.getElementById('editWaypointsList').innerHTML = renderWaypointsList(course);
+            
+            // Show important warning
+            alert('⚠️ IMPORTANT: Nouvelle balise ajoutée!\n\n' +
+                  'Cette balise a un nouveau QR code qui n\'existait pas avant.\n' +
+                  'Vous devez:\n' +
+                  '1. Consulter les QR codes mis à jour\n' +
+                  '2. Imprimer UNIQUEMENT le nouveau QR code (Balise ' + newId + ')\n' +
+                  '3. Placer ce nouveau QR code sur le terrain\n\n' +
+                  'Les autres QR codes restent inchangés!');
         }
 
         function editWaypoint(index) {
@@ -301,6 +346,19 @@
             const modal = document.getElementById('qrCodesModal');
             const content = document.getElementById('qrCodesContent');
             
+            // Check if course has been modified (compare waypoint count)
+            const waypointCount = course.waypoints ? course.waypoints.length : 0;
+            const previousWaypointCount = course.initialWaypointCount || waypointCount;
+            
+            if (waypointCount !== previousWaypointCount) {
+                const diff = waypointCount - previousWaypointCount;
+                const message = diff > 0 
+                    ? `⚠️ ATTENTION: ${diff} balise(s) ont été ajoutées depuis la création.\n\nVous verrez de NOUVEAUX QR codes pour ces balises.\nLes QR codes existants restent inchangés.`
+                    : `⚠️ ATTENTION: ${Math.abs(diff)} balise(s) ont été supprimées.\n\nCertains QR codes ne sont plus présents dans la liste.\nNe les réimprimez pas!`;
+                
+                alert(message);
+            }
+            
             content.innerHTML = '<p style="text-align: center;">Génération des QR codes...</p>';
             modal.style.display = 'block';
             
@@ -323,13 +381,17 @@
             const content = document.getElementById('qrCodesContent');
             const qrCodes = [];
 
+            // IMPORTANT: Use course creation timestamp (fixed) instead of current time
+            // This ensures QR codes are STABLE and don't change when viewed multiple times
+            const courseTimestamp = course.created_at || course.id;
+
             // Start Point - START QR Code
             const startQRData = {
                 type: 'START_COURSE',
                 courseId: course.id,
                 courseName: course.name,
                 pointName: course.startPoint?.name || 'Depart',
-                timestamp: new Date().toISOString()
+                courseCreated: courseTimestamp  // FIXED timestamp from course creation
             };
             qrCodes.push({
                 label: `DEPART - DEBUT DU PARCOURS`,
@@ -339,20 +401,26 @@
             });
 
             // Waypoints QR Codes
+            // IMPORTANT: QR codes are sorted by waypoint ID (not sequence) for stability
+            // This means deleting/adding waypoints doesn't change existing QR codes
             if (course.waypoints) {
-                course.waypoints.forEach((wp, idx) => {
+                // Sort by ID to ensure consistent order
+                const sortedWaypoints = [...course.waypoints].sort((a, b) => a.id - b.id);
+                
+                sortedWaypoints.forEach((wp) => {
                     const wpQRData = {
                         type: 'WAYPOINT',
                         courseId: course.id,
                         courseName: course.name,
-                        waypointId: wp.id,
+                        waypointId: wp.id,  // STABLE unique ID - never changes!
                         waypointName: wp.name,
-                        sequence: idx + 1,
-                        timestamp: new Date().toISOString()
+                        courseCreated: courseTimestamp  // FIXED timestamp
+                        // NOTE: No 'sequence' field! Order doesn't matter for QR codes.
+                        // Students scan in any order they want during the course.
                     };
                     qrCodes.push({
-                        label: `BALISE ${wp.id} - ${wp.name}`,
-                        displayLabel: `Balise ${wp.id} - ${wp.name}`,
+                        label: wp.name,
+                        displayLabel: wp.name,
                         data: JSON.stringify(wpQRData),
                         color: '#000000'
                     });
@@ -365,7 +433,7 @@
                 courseId: course.id,
                 courseName: course.name,
                 pointName: course.startPoint?.name || 'Arrivee',
-                timestamp: new Date().toISOString()
+                courseCreated: courseTimestamp  // FIXED timestamp
             };
             qrCodes.push({
                 label: `ARRIVEE - FIN DU PARCOURS`,
@@ -429,32 +497,17 @@
                     const titleWidth = pdf.getTextWidth(titleText);
                     pdf.text(titleText, (210 - titleWidth) / 2, 20);
                     
-                    // QR code label in black
-                    pdf.setFontSize(18);
-                    pdf.setTextColor(0, 0, 0);
-                    
-                    const labelWidth = pdf.getTextWidth(qr.label);
-                    pdf.text(qr.label, (210 - labelWidth) / 2, 40);
-                    
                     // Large QR code centered on page (150x150mm)
                     const qrSize = 150;
                     const qrX = (210 - qrSize) / 2; // Center horizontally (A4 width = 210mm)
-                    const qrY = 60; // Below the label
+                    const qrY = 60; // Below the title
                     pdf.addImage(img.src, 'PNG', qrX, qrY, qrSize, qrSize);
                     
-                    // Instructions at bottom
-                    pdf.setFontSize(12);
+                    // QR code label at bottom (easy to cut off)
+                    pdf.setFontSize(18);
                     pdf.setTextColor(0, 0, 0);
-                    const instructions = 'Scannez ce QR code avec l\'application mobile';
-                    const instWidth = pdf.getTextWidth(instructions);
-                    pdf.text(instructions, (210 - instWidth) / 2, 230);
-                    
-                    // Footer with date
-                    pdf.setFontSize(10);
-                    pdf.setTextColor(0, 0, 0);
-                    const footer = `Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`;
-                    const footerWidth = pdf.getTextWidth(footer);
-                    pdf.text(footer, (210 - footerWidth) / 2, 280);
+                    const labelWidth = pdf.getTextWidth(qr.label);
+                    pdf.text(qr.label, (210 - labelWidth) / 2, 270);
                 }
             });
 

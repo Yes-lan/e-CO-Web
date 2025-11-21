@@ -4,6 +4,9 @@
 
 {% block javascripts %}
     {{ parent() }}
+    <!-- OrienteeringApp class - MUST load before map initialization -->
+    <script src="{{ asset('assets/js/app.js') }}"></script>
+    
     <!-- Google Maps API with async loading -->
     <script>
         // Global variables to track state
@@ -66,23 +69,47 @@
             console.log('Map container found, initializing...');
             window.mapPageReady = true;
             
-            // Initialize the orienteering app first (async)
+            // Check if OrienteeringApp class is loaded
+            if (typeof OrienteeringApp === 'undefined') {
+                console.error('OrienteeringApp class not loaded! Check if assets/js/app.js is loaded.');
+                return;
+            }
+            
+            // Initialize the orienteering app first (async) and WAIT for completion
             if (window.initializeOrienteeringApp) {
                 console.log('Initializing orienteering app...');
                 await window.initializeOrienteeringApp();
+                console.log('App initialization complete');
+            } else {
+                console.error('initializeOrienteeringApp function not found!');
+                return;
             }
             
-            // Wait a bit for app initialization
-            setTimeout(function() {
-                // Check if Google Maps is already loaded
-                if (window.google && window.google.maps) {
-                    console.log('Google Maps already loaded, initializing app');
-                    initMapApp();
-                } else {
-                    console.log('Loading Google Maps API');
-                    loadGoogleMaps();
-                }
-            }, 200);
+            // Ensure app and config are ready before proceeding
+            if (!window.app) {
+                console.error('App instance not created! Check app.js loading.');
+                return;
+            }
+            
+            if (!window.app.config) {
+                console.error('Configuration not loaded! Check map-config.json file and network.');
+                console.error('App state:', {
+                    initialized: window.app.initialized,
+                    config: window.app.config
+                });
+                return;
+            }
+            
+            console.log('App ready with config:', window.app.config.defaultLocation);
+            
+            // Check if Google Maps is already loaded
+            if (window.google && window.google.maps) {
+                console.log('Google Maps already loaded, initializing map now');
+                initMapApp();
+            } else {
+                console.log('Loading Google Maps API');
+                loadGoogleMaps();
+            }
         }
         
         // Load Google Maps API asynchronously
@@ -109,21 +136,31 @@
         function initMap() {
             console.log('Google Maps API loaded successfully via callback');
             window.googleMapsLoading = false;
+            
+            // Double-check that config is loaded before initializing map
+            if (!window.app || !window.app.config) {
+                console.warn('Config not loaded yet, waiting...');
+                setTimeout(initMap, 100);
+                return;
+            }
+            
             initMapApp();
         }
         
         function initMapApp() {
             console.log('initMapApp called');
-            if (window.app && window.app.initializeMap) {
+            
+            // Ensure app is ready AND config is loaded
+            if (window.app && window.app.config && window.app.initializeMap) {
                 if (!window.app.mapsLoaded) {
-                    console.log('Initializing map in app...');
+                    console.log('Initializing map with config:', window.app.config.defaultLocation);
                     window.app.initializeMap();
                 } else {
                     console.log('Map already loaded in app');
                 }
             } else {
-                console.log('App not ready, retrying in 500ms...');
-                setTimeout(initMapApp, 500);
+                console.log('App or config not ready, retrying in 200ms...');
+                setTimeout(initMapApp, 200);
             }
         }
         

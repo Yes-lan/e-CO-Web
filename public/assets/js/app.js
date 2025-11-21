@@ -112,15 +112,20 @@ if (typeof OrienteeringApp === 'undefined') {
             return;
         }
 
-        console.log('Initializing Google Maps...');
+        // CRITICAL: Ensure config is loaded before proceeding
+        if (!this.config) {
+            console.error('Configuration not loaded yet! Map initialization aborted.');
+            console.error('This will cause the map to use wrong default location.');
+            // Don't initialize with wrong location - wait for config
+            return;
+        }
+
+        console.log('Initializing Google Maps with config:', this.config);
         this.mapsLoaded = true;
         
-        // Use configuration or fallback to default
-        const defaultLocation = this.config 
-            ? this.config.defaultLocation 
-            : { lat: 45.5017, lng: -73.5673 };
-        
-        const defaultZoom = this.config ? this.config.defaultZoom : 15;
+        // Use configuration (now guaranteed to exist)
+        const defaultLocation = this.config.defaultLocation;
+        const defaultZoom = this.config.defaultZoom;
         
         // Initialize map
         this.map = new google.maps.Map(mapContainer, {
@@ -1668,9 +1673,22 @@ if (!window.app) {
 
 // Function to initialize the app for Turbo navigation
 window.initializeOrienteeringApp = async function() {
-    if (window.app && !window.app.initialized) {
-        await window.app.init();
+    // Create app instance if it doesn't exist
+    if (!window.app) {
+        console.log('Creating new OrienteeringApp instance...');
+        window.app = new OrienteeringApp();
     }
+    
+    // Initialize if not already initialized
+    if (!window.app.initialized) {
+        console.log('Initializing app and loading configuration...');
+        await window.app.init();
+        console.log('App initialization complete. Config loaded:', !!window.app.config);
+    } else {
+        console.log('App already initialized');
+    }
+    
+    return window.app;
 };
 
 // Ensure initMap is available globally for Google Maps callback
